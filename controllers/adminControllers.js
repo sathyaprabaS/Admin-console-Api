@@ -167,5 +167,57 @@ exports.createAdmin = async (req, res, next) => {
     }
   };
 
-
+  /**
+ * @param {Request} req - The Express request object
+ * @param {Response} res - The Express response object
+ */
+  exports.getAllHistory = async (req, res, next) => {
+    try {
+      const products = await AdminModel.find();
+  
+      // Process data
+      const dataByDate = products.reduce((acc, product) => {
+        const date = product.Date;
+        if (!acc[date]) {
+          acc[date] = { new: [], used: [], cpo: [] };
+        }
+        if (product.condition === 'new') {
+          acc[date].new.push(product);
+        } else if (product.condition === 'used') {
+          acc[date].used.push(product);
+        } else if (product.condition === 'cpo') {
+          acc[date].cpo.push(product);
+        }
+        return acc;
+      }, {});
+  
+      const result = Object.keys(dataByDate).map(date => {
+        const newProducts = dataByDate[date].new;
+        const usedProducts = dataByDate[date].used;
+        const cpoProducts = dataByDate[date].cpo;
+  
+        const newTotalPrice = newProducts.reduce((sum, product) => sum + parseFloat(product.price), 0);
+        const usedTotalPrice = usedProducts.reduce((sum, product) => sum + parseFloat(product.price), 0);
+        const cpoTotalPrice = cpoProducts.reduce((sum, product) => sum + parseFloat(product.price), 0);
+  
+        return {
+          date,
+          newCount: newProducts.length,
+          newTotalPrice: Math.round(newTotalPrice),
+          newAveragePrice: Math.round(newTotalPrice / newProducts.length || 0),
+          usedCount: usedProducts.length,
+          usedTotalPrice: Math.round(usedTotalPrice),
+          usedAveragePrice: Math.round(usedTotalPrice / usedProducts.length || 0),
+          cpoCount: cpoProducts.length,
+          cpoTotalPrice: Math.round(cpoTotalPrice),
+          cpoAveragePrice: Math.round(cpoTotalPrice / cpoProducts.length || 0)
+        };
+      });
+  
+      res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  };
+  
     
