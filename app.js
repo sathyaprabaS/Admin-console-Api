@@ -24,25 +24,12 @@ app.use(session({
 }));
 
 //Routes imports goes here
-var menuRouter = require("./routes/menu");
+var adminRouter = require("./routes/admin");
 app.use((req, res, next) => {
   const allowedOriginsWithCredentials = [
     "http://localhost:5173",
     "http://localhost:5174",
   ];
-
-  const isAllowedWithCredentials = allowedOriginsWithCredentials.some(
-    (origin) => req.headers.origin === origin
-  );
-
-  if (isAllowedWithCredentials) {
-    cors({
-      origin: req.headers.origin,
-      credentials: true,
-    })(req, res, next);
-  } else {
-    cors()(req, res, next);
-  }
 });
 
 mongoose
@@ -58,7 +45,7 @@ mongoose
   });
 
 //Routes
-app.use("/menu", menuRouter);
+app.use("/admin", adminRouter);
 
 //these middleware should at last but before error handlers
 app.use("*", (req, res, next) => {

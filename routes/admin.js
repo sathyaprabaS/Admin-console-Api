@@ -7,6 +7,6 @@ const use = (fn) => (req, res, next) =>
   Promise.resolve(fn(req, res, next)).catch(next);
 
 //Admin
-router.post("/admin", use(adminController.admin));
+router.post("/createAdmin", use(adminController.createAdmin));
 
 module.exports = router;
