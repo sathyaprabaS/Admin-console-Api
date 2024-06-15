@@ -8,5 +8,7 @@ const use = (fn) => (req, res, next) =>
 
 //Admin
 router.post("/createAdmin", use(adminController.createAdmin));
+router.get("/getAllAdmin", use(adminController.getAllAdmin));
+
 
 module.exports = router;
