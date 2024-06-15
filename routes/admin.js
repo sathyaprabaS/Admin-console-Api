@@ -12,7 +12,7 @@ const use = (fn) => (req, res, next) =>
 //Admin
 router.post('/createAdmin', upload.single('csvfile'), use(adminController.createAdmin));
 router.get("/getAllAdmin", use(adminController.getAllAdmin));
-router.get("/getFilterBYInventoryCount", use(adminController.getFilterBYInventoryCount));
+router.get("/getFilterByInventoryCount", use(adminController.getFilterByInventoryCount));
 router.get("/getAllHistory", use(adminController.getAllHistory));
 
 

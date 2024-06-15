@@ -86,27 +86,85 @@ exports.createAdmin = async (req, res, next) => {
  * @param {Request} req - The Express request object
  * @param {Response} res - The Express response object
  */
-  exports.getFilterBYInventoryCount = async (req, res) => {
+  exports.getFilterByInventoryCount = async (req, res) => {
     try {
-      const { product_type, condition, Date } = req.query;
+      const { product_type, condition, Date: dateParam } = req.query;
+  
+      // Helper function to format a date to "M/D/YYYY"
+      const formatDate = (date) => {
+        const month = date.getMonth() + 1; // Months are zero-indexed
+        const day = date.getDate();
+        const year = date.getFullYear();
+        return `${month}/${day}/${year}`;
+      };
+  
+      // Helper function to get the start and end dates for the given period
+      const getDateRange = (period) => {
+        const now = new Date();
+        let startDate;
+        let endDate;
+  
+        switch (period) {
+          case 'this month':
+            startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+            endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+            break;
+          case 'last month':
+            startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+            endDate = new Date(now.getFullYear(), now.getMonth(), 0);
+            break;
+          case 'last 3 months':
+            startDate = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+            endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+            break;
+          case 'last 6 months':
+            startDate = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+            endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+            break;
+          case '1 year':
+            startDate = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
+            endDate = now;
+            break;
+          case '2 years':
+            startDate = new Date(now.getFullYear() - 2, now.getMonth(), now.getDate());
+            endDate = now;
+            break;
+          default:
+            throw new Error('Invalid date parameter');
+        }
+        return {
+          startDate: formatDate(startDate),
+          endDate: formatDate(endDate),
+        };
+      };
   
       // Build the match query object
       const matchQuery = {};
       if (product_type) matchQuery.product_type = product_type;
-      if (Date) {
-        // Assuming Date is in "MM/DD/YYYY" format
-        const [month, day, year] = Date.split('/');
-        matchQuery.Date = `${month.padStart(2, '0')}/${day.padStart(2, '0')}/${year}`;
+      if (dateParam) {
+        const { startDate, endDate } = getDateRange(dateParam);
+        matchQuery.Date = { $gte: startDate, $lte: endDate };
       }
       if (condition) matchQuery.condition = condition;
   
       // Aggregation pipeline
       const pipeline = [
+        {
+          $addFields: {
+            parsedDate: {
+              $dateFromString: {
+                dateString: '$Date',
+                format: '%m/%d/%Y',
+                onError: new Date('2024-01-01'), // default value for invalid date strings
+              },
+            },
+          },
+        },
         { $match: matchQuery },
         {
           $group: {
             _id: {
-              yearMonth: { $dateToString: { format: '%Y-%m', date: { $dateFromString: { dateString: '$Date' } } } }, // Extract year and month from Date
+              yearMonth: { $dateToString: { format: '%Y-%m', date: '$parsedDate' } }, // Extract year and month from parsedDate
               condition: '$condition',
             },
             count: { $sum: 1 },
@@ -138,7 +196,7 @@ exports.createAdmin = async (req, res, next) => {
       const results = await AdminModel.aggregate(pipeline);
   
       // Transform results into desired format
-      const filteredResults = results.map(result => {
+      const filteredResults = results.map((result) => {
         const conditionCounts = result.conditions.reduce((acc, curr) => {
           if (!condition || curr.condition === condition) {
             acc.Count = curr.count;
@@ -146,9 +204,9 @@ exports.createAdmin = async (req, res, next) => {
           return acc;
         }, {});
   
-        // Format the yearMonth to the initial date of the month (e.g., "2024-03" to "03/01/2024")
+        // Format the yearMonth to the initial date of the month (e.g., "2024-03" to "3/1/2024")
         const [year, month] = result.yearMonth.split('-');
-        const formattedMonth = `${month}/01/${year}`;
+        const formattedMonth = `${parseInt(month, 10)}/1/${year}`;
   
         return {
           Date: formattedMonth,
@@ -158,7 +216,7 @@ exports.createAdmin = async (req, res, next) => {
   
       // Filter out empty objects if a condition was specified
       const finalResults = condition
-        ? filteredResults.filter(item => Object.keys(item).length > 1)
+        ? filteredResults.filter((item) => Object.keys(item).length > 1)
         : filteredResults;
   
       res.json(finalResults);
