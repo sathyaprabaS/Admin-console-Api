@@ -104,7 +104,7 @@ exports.createAdmin = async (req, res, next) => {
         let endDate;
   
         switch (period.toLowerCase()) {
-          case 'thisMonth':
+          case 'thismonth':
             startDate = new Date(now.getFullYear(), now.getMonth(), 1);
             endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
             break;
