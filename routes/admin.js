@@ -14,6 +14,7 @@ router.post('/createAdmin', upload.single('csvfile'), use(adminController.create
 router.get("/getAllAdmin", use(adminController.getAllAdmin));
 router.get("/getFilterByInventoryCount", use(adminController.getFilterByInventoryCount));
 router.get("/getAllHistory", use(adminController.getAllHistory));
+router.get("/getFilterByAverageMSRP", use(adminController.getFilterByAverageMSRP));
 
 
 

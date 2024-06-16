@@ -105,7 +105,7 @@ exports.createAdmin = async (req, res, next) => {
         let endDate;
   
         switch (period) {
-          case 'this month':
+          case 'ThisMonth':
             startDate = new Date(now.getFullYear(), now.getMonth(), 1);
             endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
             break;
@@ -166,6 +166,7 @@ exports.createAdmin = async (req, res, next) => {
             _id: {
               yearMonth: { $dateToString: { format: '%Y-%m', date: '$parsedDate' } }, // Extract year and month from parsedDate
               condition: '$condition',
+              product_type:'$product_type'
             },
             count: { $sum: 1 },
           },
@@ -177,6 +178,8 @@ exports.createAdmin = async (req, res, next) => {
               $push: {
                 condition: '$_id.condition',
                 count: '$count',
+                product_type:'$product_type'
+
               },
             },
           },
@@ -186,6 +189,7 @@ exports.createAdmin = async (req, res, next) => {
             _id: 0,
             yearMonth: '$_id',
             conditions: 1,
+            product_type: 1,
           },
         },
         {
@@ -196,13 +200,12 @@ exports.createAdmin = async (req, res, next) => {
       const results = await AdminModel.aggregate(pipeline);
   
       // Transform results into desired format
-      const filteredResults = results.map((result) => {
-        const conditionCounts = result.conditions.reduce((acc, curr) => {
-          if (!condition || curr.condition === condition) {
-            acc.Count = curr.count;
-          }
-          return acc;
-        }, {});
+        const transformedResults = results.map(result => {
+            const formattedConditions = result.conditions.map(condition => ({
+                condition: condition.condition,
+                count: condition.count,
+                product_type: condition.product_type // Include product_type in each condition object
+            }));
   
         // Format the yearMonth to the initial date of the month (e.g., "2024-03" to "3/1/2024")
         const [year, month] = result.yearMonth.split('-');
@@ -210,14 +213,14 @@ exports.createAdmin = async (req, res, next) => {
   
         return {
           Date: formattedMonth,
-          ...conditionCounts,
-        };
-      });
-  
+          conditions: formattedConditions,
+      };
+  });
+
       // Filter out empty objects if a condition was specified
       const finalResults = condition
-        ? filteredResults.filter((item) => Object.keys(item).length > 1)
-        : filteredResults;
+        ? transformedResults.filter((item) => Object.keys(item).length > 1)
+        : transformedResults;
   
       res.json(finalResults);
     } catch (error) {
@@ -279,3 +282,137 @@ exports.createAdmin = async (req, res, next) => {
   };
   
     
+  /**
+ * @param {Request} req - The Express request object
+ * @param {Response} res - The Express response object
+ */
+
+   exports.getFilterByAverageMSRP = async (req, res) => {
+    try {
+      const { product_type, condition, Date: dateParam } = req.query;
+  
+      // Helper function to format a date to "M/D/YYYY"
+      const formatDate = (date) => {
+        const month = date.getMonth() + 1; // Months are zero-indexed
+        const day = date.getDate();
+        const year = date.getFullYear();
+        return `${month}/${day}/${year}`;
+      };
+  
+      // Helper function to get the start and end dates for the given period
+      const getDateRange = (period) => {
+        const now = new Date();
+        let startDate;
+        let endDate;
+  
+        switch (period) {
+          case 'this month':
+            startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+            endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+            break;
+          case 'last month':
+            startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+            endDate = new Date(now.getFullYear(), now.getMonth(), 0);
+            break;
+          case 'last 3 months':
+            startDate = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+            endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+            break;
+          case 'last 6 months':
+            startDate = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+            endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+            break;
+          case '1 year':
+            startDate = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
+            endDate = now;
+            break;
+          case '2 years':
+            startDate = new Date(now.getFullYear() - 2, now.getMonth(), now.getDate());
+            endDate = now;
+            break;
+          default:
+            throw new Error('Invalid date parameter');
+        }
+  
+        return {
+          startDate: formatDate(startDate),
+          endDate: formatDate(endDate),
+        };
+      };
+  
+      // Build the match query object
+      const matchQuery = {};
+      if (product_type) matchQuery.product_type = product_type;
+      if (dateParam) {
+        const { startDate, endDate } = getDateRange(dateParam);
+        matchQuery.Date = { $gte: startDate, $lte: endDate };
+      }
+      if (condition) matchQuery.condition = condition;
+  
+      // Aggregation pipeline
+      const pipeline = [
+        {
+          $addFields: {
+            parsedDate: {
+              $cond: {
+                if: { $ne: [{ $type: '$Date' }, 'missing'] },
+                then: {
+                  $dateFromString: {
+                    dateString: '$Date',
+                    format: '%m/%d/%Y',
+                  },
+                },
+                else: null,
+              },
+            },
+          },
+        },
+        {
+          $match: matchQuery,
+        },
+        {
+          $addFields: {
+            priceValue: {
+              $convert: {
+                input: { $trim: { input: '$price', chars: ' USD' } },
+                to: 'double',
+                onError: 0, // Default value when conversion fails
+                onNull: 0, // Default value when input is null
+              },
+            },
+          },
+        },
+        {
+          $group: {
+            _id: {
+              yearMonth: { $dateToString: { format: '%m/%d/%Y', date: '$parsedDate' } }, // Extract year and month from parsedDate
+            },
+            totalPrice: { $sum: '$priceValue' },
+            count: { $sum: 1 },
+          },
+        },
+        {
+          $project: {
+            _id: 0,
+            Date: '$_id.yearMonth',
+            averagePrice: { $divide: ['$totalPrice', '$count'] },
+          },
+        },
+        {
+          $sort: { Date: 1 },
+        },
+      ];
+  
+      const results = await AdminModel.aggregate(pipeline);
+  
+      // Transform results into desired format
+      const formattedResults = results.map((result) => ({
+        Date: result.Date,
+        averagePrice: parseFloat(result.averagePrice.toFixed(2)),
+      }));
+  
+      res.json(formattedResults);
+    } catch (error) {
+      res.status(500).send(error.message);
+    }
+  };
