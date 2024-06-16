@@ -75,7 +75,6 @@ exports.createAdmin = async (req, res, next) => {
   exports.getAllAdmin = async (req, res, next) => {
     try {
       const product = await AdminModel.find();
-  console.log("product",product)
       res.json(product);
     } catch (error) {
       next(error);
@@ -104,28 +103,28 @@ exports.createAdmin = async (req, res, next) => {
         let startDate;
         let endDate;
   
-        switch (period) {
-          case 'ThisMonth':
+        switch (period.toLowerCase()) {
+          case 'thisMonth':
             startDate = new Date(now.getFullYear(), now.getMonth(), 1);
             endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
             break;
-          case 'last month':
+          case 'lastmonth':
             startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
             endDate = new Date(now.getFullYear(), now.getMonth(), 0);
             break;
-          case 'last 3 months':
+          case 'last3months':
             startDate = new Date(now.getFullYear(), now.getMonth() - 2, 1);
             endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
             break;
-          case 'last 6 months':
+          case 'last6months':
             startDate = new Date(now.getFullYear(), now.getMonth() - 5, 1);
             endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
             break;
-          case '1 year':
+          case '1year':
             startDate = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
             endDate = now;
             break;
-          case '2 years':
+          case '2years':
             startDate = new Date(now.getFullYear() - 2, now.getMonth(), now.getDate());
             endDate = now;
             break;
@@ -287,7 +286,7 @@ exports.createAdmin = async (req, res, next) => {
  * @param {Response} res - The Express response object
  */
 
-   exports.getFilterByAverageMSRP = async (req, res) => {
+  exports.getFilterByAverageMSRP = async (req, res) => {
     try {
       const { product_type, condition, Date: dateParam } = req.query;
   
@@ -305,28 +304,28 @@ exports.createAdmin = async (req, res, next) => {
         let startDate;
         let endDate;
   
-        switch (period) {
-          case 'this month':
+        switch (period.toLowerCase()) { // Convert to lowercase to handle case sensitivity
+          case 'thismonth':
             startDate = new Date(now.getFullYear(), now.getMonth(), 1);
             endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
             break;
-          case 'last month':
+          case 'lastmonth':
             startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
             endDate = new Date(now.getFullYear(), now.getMonth(), 0);
             break;
-          case 'last 3 months':
+          case 'last3months':
             startDate = new Date(now.getFullYear(), now.getMonth() - 2, 1);
             endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
             break;
-          case 'last 6 months':
+          case 'last6months':
             startDate = new Date(now.getFullYear(), now.getMonth() - 5, 1);
             endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
             break;
-          case '1 year':
+          case '1year':
             startDate = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
             endDate = now;
             break;
-          case '2 years':
+          case '2years':
             startDate = new Date(now.getFullYear() - 2, now.getMonth(), now.getDate());
             endDate = now;
             break;
@@ -354,15 +353,11 @@ exports.createAdmin = async (req, res, next) => {
         {
           $addFields: {
             parsedDate: {
-              $cond: {
-                if: { $ne: [{ $type: '$Date' }, 'missing'] },
-                then: {
-                  $dateFromString: {
-                    dateString: '$Date',
-                    format: '%m/%d/%Y',
-                  },
-                },
-                else: null,
+              $dateFromString: {
+                dateString: '$Date',
+                format: '%m/%d/%Y',
+                onError: null, // Handle incorrect date formats gracefully
+                onNull: null,  // Handle missing date fields gracefully
               },
             },
           },
@@ -377,7 +372,7 @@ exports.createAdmin = async (req, res, next) => {
                 input: { $trim: { input: '$price', chars: ' USD' } },
                 to: 'double',
                 onError: 0, // Default value when conversion fails
-                onNull: 0, // Default value when input is null
+                onNull: 0,  // Default value when input is null
               },
             },
           },
@@ -385,7 +380,7 @@ exports.createAdmin = async (req, res, next) => {
         {
           $group: {
             _id: {
-              yearMonth: { $dateToString: { format: '%m/%d/%Y', date: '$parsedDate' } }, // Extract year and month from parsedDate
+              yearMonth: { $dateToString: { format: '%Y-%m', date: '$parsedDate' } },
             },
             totalPrice: { $sum: '$priceValue' },
             count: { $sum: 1 },
@@ -394,22 +389,32 @@ exports.createAdmin = async (req, res, next) => {
         {
           $project: {
             _id: 0,
-            Date: '$_id.yearMonth',
+            yearMonth: '$_id.yearMonth',
             averagePrice: { $divide: ['$totalPrice', '$count'] },
           },
         },
         {
-          $sort: { Date: 1 },
+          $sort: { yearMonth: 1 },
         },
       ];
   
       const results = await AdminModel.aggregate(pipeline);
   
       // Transform results into desired format
-      const formattedResults = results.map((result) => ({
-        Date: result.Date,
-        averagePrice: parseFloat(result.averagePrice.toFixed(2)),
-      }));
+      const formattedResults = results.map((result) => {
+        if (result.yearMonth) {
+          // Parse the yearMonth string back to a date
+          const [year, month] = result.yearMonth.split('-');
+          const formattedDate = formatDate(new Date(year, month - 1, 1));
+  
+          return {
+            Date: formattedDate,
+            averagePrice: parseFloat(result.averagePrice.toFixed(2)),
+          };
+        } else {
+          return null;
+        }
+      }).filter(result => result !== null); // Filter out any null results
   
       res.json(formattedResults);
     } catch (error) {
